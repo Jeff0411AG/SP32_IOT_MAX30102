@@ -22,6 +22,7 @@ DEFAULT_STATE = {
     "last_alert": None,
     "last_startup": None,
     "audit_log": [],
+    "outbox": [],
 }
 
 

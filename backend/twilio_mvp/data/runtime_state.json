@@ -1,5 +1,6 @@
 {
   "last_alert": null,
   "last_startup": null,
-  "audit_log": []
+  "audit_log": [],
+  "outbox": []
 }
