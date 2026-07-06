@@ -134,6 +134,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     last_startup = state.get("last_startup")
     target_number = normalize_phone(config.get("admin_phone", ""))
     contacts = recipients(config)
+    audit_count = len(state.get("audit_log", []))
 
     if last_alert:
         status = last_alert.get("status", "SIN ALERTAS")
@@ -288,6 +289,11 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       font-size: 0.92rem;
       margin-top: 10px;
     }}
+    .tiny {{
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin-top: 8px;
+    }}
     .form-grid {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -350,6 +356,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       <article class="card">
         <p class="eyebrow">Destinatarios activos</p>
         <ul>{contacts_html}</ul>
+        <p class="tiny">Esta lista se actualiza desde la consola web usando los comandos operativos del backend.</p>
       </article>
 
       <article class="card">
@@ -359,6 +366,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
           <a class="btn btn-primary" href="{sms_link}">Abrir SMS</a>
           <a class="btn btn-secondary" href="/debug/audit" target="_blank" rel="noreferrer">Ver auditoria</a>
         </div>
+        <p class="tiny">El enlace usa exactamente el ultimo mensaje generado por el ESP32 y deja el numero precargado.</p>
       </article>
 
       <article class="card">
@@ -387,6 +395,13 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
             <button class="btn btn-primary" type="submit">Procesar comando</button>
           </div>
         </form>
+        <p class="tiny">Ejemplos: STATUS, ADD +51911111111, DEL +51911111111, CAMBIAR +51911111111 +51922222222, RESET 2468.</p>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Resumen operativo</p>
+        <div class="message">1. El ESP32 toma datos y envia al backend.\n2. El backend guarda la ultima alerta y actualiza el panel.\n3. Otra persona puede abrir el SMS con el texto listo.\n4. Esa misma persona puede administrar la lista con STATUS, ADD, DEL, CAMBIAR y RESET desde esta web.</div>
+        <p class="meta">Eventos auditados actualmente: {audit_count}</p>
       </article>
     </section>
   </main>
