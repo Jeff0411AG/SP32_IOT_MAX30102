@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, Header, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -122,6 +123,275 @@ def format_status(config: dict[str, Any], state: dict[str, Any]) -> str:
     else:
         resumen = "Sin alertas previas registradas"
     return f"[ONLINE] Contactos: {len(contacts)} | {resumen}"
+
+
+def build_sms_link(number: str, body: str) -> str:
+    return f"sms:{normalize_phone(number)}?body={quote(body)}"
+
+
+def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_result: str = "") -> str:
+    last_alert = state.get("last_alert")
+    last_startup = state.get("last_startup")
+    target_number = normalize_phone(config.get("admin_phone", ""))
+    contacts = recipients(config)
+
+    if last_alert:
+        status = last_alert.get("status", "SIN ALERTAS")
+        message = last_alert.get("message", "Sin mensaje")
+        bpm = last_alert.get("bpm", "--")
+        spo2 = last_alert.get("spo2", "--")
+        battery = last_alert.get("battery", "--")
+        received_at = last_alert.get("received_at", "--")
+    else:
+        status = "SIN ALERTAS"
+        message = "Aun no hay alertas registradas."
+        bpm = "--"
+        spo2 = "--"
+        battery = "--"
+        received_at = "--"
+
+    startup_message = last_startup.get("message", "Sin arranque registrado") if last_startup else "Sin arranque registrado"
+    startup_time = last_startup.get("received_at", "--") if last_startup else "--"
+    sms_link = build_sms_link(target_number, message)
+    badge_color = "#b91c1c" if status == "ALERTA" else "#166534"
+    contacts_html = "".join(
+        f'<li style="margin-bottom:6px;">{contact}</li>' for contact in contacts
+    ) or '<li>Sin destinatarios configurados</li>'
+    console_block = (
+        f"""
+      <article class="card">
+        <p class="eyebrow">Respuesta de consola</p>
+        <div class="message">{console_result}</div>
+      </article>
+"""
+        if console_result
+        else ""
+    )
+
+    return f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel ESP32</title>
+  <meta http-equiv="refresh" content="15">
+  <style>
+    :root {{
+      --bg: #efe7d8;
+      --card: #fffdf8;
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d8d1c2;
+      --accent: #0f766e;
+      --warn: #c2410c;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #fff8e8 0, transparent 30%),
+        linear-gradient(135deg, #f6f0e2 0%, #eadfcb 100%);
+      min-height: 100vh;
+    }}
+    .wrap {{
+      max-width: 1024px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }}
+    h1 {{
+      margin: 0;
+      font-size: clamp(2.2rem, 4vw, 3.6rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }}
+    .sub {{
+      color: var(--muted);
+      max-width: 760px;
+      margin: 10px 0 26px;
+      line-height: 1.5;
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }}
+    .card {{
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 12px 28px rgba(68, 48, 18, 0.08);
+    }}
+    .eyebrow {{
+      margin: 0 0 8px;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }}
+    .value {{
+      margin: 0;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      line-height: 1;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: {badge_color};
+      color: white;
+      font-weight: 700;
+    }}
+    .message {{
+      background: #fcfaf5;
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }}
+    .stack {{
+      display: grid;
+      gap: 16px;
+    }}
+    .actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+    }}
+    .btn {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }}
+    .btn-primary {{
+      background: var(--accent);
+      color: white;
+    }}
+    .btn-secondary {{
+      background: transparent;
+      border-color: var(--warn);
+      color: var(--warn);
+    }}
+    .meta {{
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin-top: 10px;
+    }}
+    .form-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }}
+    label {{
+      display: grid;
+      gap: 6px;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }}
+    input {{
+      width: 100%;
+      min-height: 46px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      padding: 0 12px;
+      font: inherit;
+      color: var(--ink);
+      background: white;
+    }}
+    ul {{
+      margin: 0;
+      padding-left: 18px;
+    }}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <p class="eyebrow">Panel de Alerta Biometrica</p>
+    <h1>ESP32 + MAX30102<br>Centro de Alerta</h1>
+    <p class="sub">El ESP32 reporta al backend por detrás. Desde esta interfaz se visualiza la última alerta y se abre la app de mensajes con el número y el texto listos para envío manual.</p>
+
+    <section class="grid">
+      <article class="card">
+        <p class="eyebrow">Estado</p>
+        <span class="badge">{status}</span>
+      </article>
+      <article class="card">
+        <p class="eyebrow">BPM</p>
+        <p class="value">{bpm}</p>
+      </article>
+      <article class="card">
+        <p class="eyebrow">SpO2</p>
+        <p class="value">{spo2}%</p>
+      </article>
+      <article class="card">
+        <p class="eyebrow">Bateria</p>
+        <p class="value">{battery}%</p>
+      </article>
+    </section>
+
+    <section class="stack">
+      <article class="card">
+        <p class="eyebrow">Destino actual</p>
+        <p class="value" style="font-size:1.5rem;">{target_number or 'Sin numero configurado'}</p>
+        <p class="meta">Ultima alerta registrada en: {received_at}</p>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Destinatarios activos</p>
+        <ul>{contacts_html}</ul>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Mensaje listo para despacho</p>
+        <div class="message">{message}</div>
+        <div class="actions">
+          <a class="btn btn-primary" href="{sms_link}">Abrir SMS</a>
+          <a class="btn btn-secondary" href="/debug/audit" target="_blank" rel="noreferrer">Ver auditoria</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Ultimo arranque del equipo</p>
+        <div class="message">{startup_message}</div>
+        <p class="meta">Registrado en: {startup_time}</p>
+      </article>
+
+{console_block}
+
+      <article class="card">
+        <p class="eyebrow">Consola de comandos</p>
+        <p class="meta">Aqui otra persona puede simular el flujo SMS completo desde la web usando los mismos comandos del backend.</p>
+        <form method="post" action="/console/command">
+          <div class="form-grid">
+            <label>
+              Numero origen
+              <input type="text" name="from_number" value="{target_number or '+51910521259'}" placeholder="+51910521259">
+            </label>
+            <label>
+              Comando
+              <input type="text" name="body" placeholder="STATUS | ADD +519... | DEL +519... | CAMBIAR ... | RESET 2468">
+            </label>
+          </div>
+          <div class="actions">
+            <button class="btn btn-primary" type="submit">Procesar comando</button>
+          </div>
+        </form>
+      </article>
+    </section>
+  </main>
+</body>
+</html>"""
 
 
 def process_incoming_command(number: str, raw_body: str) -> str:
@@ -250,6 +520,25 @@ def process_incoming_command(number: str, raw_body: str) -> str:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"ok": "true"}
+
+
+@app.get("/", response_class=HTMLResponse)
+def dashboard() -> str:
+    return render_dashboard(load_config(), load_state())
+
+
+@app.post("/console/command", response_class=HTMLResponse)
+def console_command(
+    from_number: str = Form(...),
+    body: str = Form(...),
+) -> str:
+    reply = process_incoming_command(from_number, body)
+    console_result = (
+        f"Origen: {normalize_phone(from_number)}\n"
+        f"Comando: {body.strip().upper()}\n"
+        f"Respuesta: {reply}"
+    )
+    return render_dashboard(load_config(), load_state(), console_result=console_result)
 
 
 @app.post("/api/startup")
