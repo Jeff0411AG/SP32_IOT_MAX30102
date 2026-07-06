@@ -6,4 +6,5 @@ backend/twilio_mvp/.env
 backend/twilio_mvp/.env.render
 backend/twilio_mvp/.venv/
 backend/twilio_mvp/**/__pycache__/
+backend/twilio_mvp/*.log
 firmware/Sensor_de_frecuencia_Cardiaca_WiFi/Secrets.h
