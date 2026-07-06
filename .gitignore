@@ -1,3 +1,9 @@
 .arduino-build/
 firmware/Sensor_de_frecuencia_Cardiaca_GSM/build/
+firmware/Sensor_de_frecuencia_Cardiaca_WiFi/build/
 tools/
+backend/twilio_mvp/.env
+backend/twilio_mvp/.env.render
+backend/twilio_mvp/.venv/
+backend/twilio_mvp/**/__pycache__/
+firmware/Sensor_de_frecuencia_Cardiaca_WiFi/Secrets.h
