@@ -7,7 +7,6 @@ from urllib.parse import quote
 from fastapi import FastAPI, Form, Header, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel
-from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 
 from .config_store import (
@@ -21,10 +20,9 @@ from .config_store import (
     save_config,
     save_state,
 )
-from .settings import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, TWILIO_TEST_MODE
 
 
-app = FastAPI(title="ESP32 Twilio MVP")
+app = FastAPI(title="ESP32 Assisted SMS Backend")
 
 
 class StartupPayload(BaseModel):
@@ -52,12 +50,6 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def twilio_client() -> Client:
-    if not TWILIO_ACCOUNT_SID or not TWILIO_AUTH_TOKEN or not TWILIO_FROM_NUMBER:
-        raise HTTPException(status_code=500, detail="Twilio no configurado en el backend.")
-    return Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-
-
 def twiml_message(body: str) -> str:
     response = MessagingResponse()
     response.message(body)
@@ -72,35 +64,6 @@ def audit_event(kind: str, payload: dict[str, Any]) -> None:
             **payload,
         }
     )
-
-
-def send_sms(to_number: str, body: str) -> dict[str, Any]:
-    normalized_to = normalize_phone(to_number)
-    client = twilio_client()
-    try:
-        message = client.messages.create(
-            from_=TWILIO_FROM_NUMBER,
-            to=normalized_to,
-            body=body,
-        )
-        result = {
-            "ok": True,
-            "to": normalized_to,
-            "sid": message.sid,
-            "status": getattr(message, "status", None),
-            "test_mode": TWILIO_TEST_MODE,
-        }
-        audit_event("sms_outbound", result | {"body": body})
-        return result
-    except Exception as exc:
-        result = {
-            "ok": False,
-            "to": normalized_to,
-            "error": str(exc),
-            "test_mode": TWILIO_TEST_MODE,
-        }
-        audit_event("sms_outbound_error", result | {"body": body})
-        return result
 
 
 def validate_device(device_id: str, token: str | None) -> dict[str, Any]:
@@ -366,7 +329,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
           <a class="btn btn-primary" href="{sms_link}">Abrir SMS</a>
           <a class="btn btn-secondary" href="/debug/audit" target="_blank" rel="noreferrer">Ver auditoria</a>
         </div>
-        <p class="tiny">El enlace usa exactamente el ultimo mensaje generado por el ESP32 y deja el numero precargado.</p>
+        <p class="tiny">El enlace usa exactamente el ultimo mensaje generado por el ESP32 y deja el numero precargado. No se envia automaticamente por Twilio.</p>
       </article>
 
       <article class="card">
@@ -400,7 +363,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
 
       <article class="card">
         <p class="eyebrow">Resumen operativo</p>
-        <div class="message">1. El ESP32 toma datos y envia al backend.\n2. El backend guarda la ultima alerta y actualiza el panel.\n3. Otra persona puede abrir el SMS con el texto listo.\n4. Esa misma persona puede administrar la lista con STATUS, ADD, DEL, CAMBIAR y RESET desde esta web.</div>
+        <div class="message">1. El ESP32 toma datos y envia al backend.\n2. El backend guarda la ultima alerta y actualiza el panel.\n3. Otra persona abre el SMS manualmente con el texto listo.\n4. Esa misma persona administra la lista con STATUS, ADD, DEL, CAMBIAR y RESET desde esta web.\n5. El backend ya no despacha Twilio automaticamente.</div>
         <p class="meta">Eventos auditados actualmente: {audit_count}</p>
       </article>
     </section>
@@ -565,12 +528,16 @@ def startup(
     state = load_state()
     state["last_startup"] = payload.model_dump() | {"received_at": now_iso()}
     save_state(state)
-
-    sent = []
-    for target in recipients(config):
-        sent.append(send_sms(target, payload.message))
-
-    return {"ok": True, "sent": sent}
+    audit_event(
+        "startup_received",
+        {
+            "device_id": payload.device_id,
+            "message": payload.message,
+            "battery": payload.battery,
+            "wifi_rssi": payload.wifi_rssi,
+        },
+    )
+    return {"ok": True, "mode": "assisted", "recipients": recipients(config)}
 
 
 @app.post("/api/alert")
@@ -582,12 +549,18 @@ def alert(
     state = load_state()
     state["last_alert"] = payload.model_dump() | {"received_at": now_iso()}
     save_state(state)
-
-    sent = []
-    for target in recipients(config):
-        sent.append(send_sms(target, payload.message))
-
-    return {"ok": True, "sent": sent}
+    audit_event(
+        "alert_received",
+        {
+            "device_id": payload.device_id,
+            "status": payload.status,
+            "bpm": payload.bpm,
+            "spo2": payload.spo2,
+            "battery": payload.battery,
+            "message": payload.message,
+        },
+    )
+    return {"ok": True, "mode": "assisted", "recipients": recipients(config), "message_ready": True}
 
 
 @app.post("/twilio/webhook", response_class=PlainTextResponse)
