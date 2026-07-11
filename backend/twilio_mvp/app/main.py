@@ -241,86 +241,90 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       min-height: 100vh;
     }}
     .wrap {{
-      max-width: 980px;
+      max-width: 920px;
       margin: 0 auto;
-      padding: 28px 18px 48px;
+      padding: 18px 14px 28px;
     }}
     h1 {{
       margin: 0;
-      font-size: clamp(2.2rem, 4vw, 3.2rem);
-      line-height: 0.95;
+      font-size: clamp(1.6rem, 3vw, 2.3rem);
+      line-height: 1;
       letter-spacing: -0.04em;
     }}
     .sub {{
       color: var(--muted);
       max-width: 760px;
-      margin: 10px 0 26px;
-      line-height: 1.5;
+      margin: 6px 0 14px;
+      line-height: 1.35;
+      font-size: 0.92rem;
     }}
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 16px;
-      margin-bottom: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 10px;
     }}
     .stack {{
       display: grid;
-      gap: 16px;
+      gap: 10px;
     }}
     .card {{
       background: var(--card);
       border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 18px;
-      box-shadow: 0 12px 28px rgba(68, 48, 18, 0.08);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: 0 8px 18px rgba(68, 48, 18, 0.06);
     }}
     .eyebrow {{
-      margin: 0 0 8px;
-      font-size: 0.82rem;
+      margin: 0 0 4px;
+      font-size: 0.72rem;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
     }}
     .value {{
       margin: 0;
-      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
       line-height: 1;
     }}
     .badge {{
       display: inline-block;
-      padding: 8px 12px;
+      padding: 5px 9px;
       border-radius: 999px;
       background: {badge_color};
       color: white;
       font-weight: 700;
+      font-size: 0.84rem;
     }}
     .message {{
       background: #fcfaf5;
       border: 1px dashed var(--line);
-      border-radius: 16px;
-      padding: 16px;
+      border-radius: 10px;
+      padding: 10px;
       white-space: pre-wrap;
-      line-height: 1.45;
+      line-height: 1.3;
+      font-size: 0.9rem;
     }}
     .actions {{
       display: flex;
       flex-wrap: wrap;
-      gap: 12px;
-      margin-top: 14px;
+      gap: 8px;
+      margin-top: 10px;
     }}
     form {{ margin: 0; }}
     .btn {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 46px;
-      padding: 0 18px;
-      border-radius: 14px;
+      min-height: 34px;
+      padding: 0 12px;
+      border-radius: 10px;
       text-decoration: none;
       font-weight: 700;
       border: 1px solid transparent;
       cursor: pointer;
       font: inherit;
+      font-size: 0.88rem;
     }}
     .btn-primary {{
       background: var(--accent);
@@ -336,31 +340,31 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     }}
     .meta {{
       color: var(--muted);
-      font-size: 0.92rem;
-      margin-top: 10px;
+      font-size: 0.84rem;
+      margin-top: 6px;
     }}
     .tiny {{
       color: var(--muted);
-      font-size: 0.84rem;
-      margin-top: 8px;
+      font-size: 0.78rem;
+      margin-top: 6px;
     }}
     .form-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 8px;
     }}
     label {{
       display: grid;
-      gap: 6px;
-      font-size: 0.92rem;
+      gap: 4px;
+      font-size: 0.82rem;
       color: var(--muted);
     }}
     input {{
       width: 100%;
-      min-height: 46px;
-      border-radius: 12px;
+      min-height: 36px;
+      border-radius: 10px;
       border: 1px solid var(--line);
-      padding: 0 12px;
+      padding: 0 10px;
       font: inherit;
       color: var(--ink);
       background: white;
@@ -371,13 +375,13 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     }}
     .queue {{
       display: grid;
-      gap: 14px;
+      gap: 8px;
     }}
     .queue-item {{
       background: var(--soft);
       border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
+      border-radius: 12px;
+      padding: 10px;
     }}
     .queue-item-sent {{
       background: #f4f8f4;
@@ -386,26 +390,26 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       display: flex;
       align-items: start;
       justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 12px;
+      gap: 8px;
+      margin-bottom: 8px;
     }}
     .queue-title {{
-      margin: 0 0 4px;
-      font-size: 1rem;
+      margin: 0 0 2px;
+      font-size: 0.92rem;
       font-weight: 700;
     }}
     .queue-meta {{
       margin: 0;
       color: var(--muted);
-      font-size: 0.88rem;
+      font-size: 0.78rem;
     }}
     .chip {{
       background: #fff;
       color: var(--warn);
       border: 1px solid #f5c2a8;
       border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 0.82rem;
+      padding: 4px 8px;
+      font-size: 0.72rem;
       font-weight: 700;
       white-space: nowrap;
     }}
@@ -418,8 +422,8 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
 <body>
   <main class="wrap">
     <p class="eyebrow">Panel de Comunicacion Asistida</p>
-    <h1>ESP32 + MAX30102<br>Mensajes Claros</h1>
-    <p class="sub">Aqui se ve facil que mensajes faltan enviar, cuales ya fueron enviados y a que numeros se va a notificar. Todo queda en una sola cola simple.</p>
+    <h1>ESP32 + MAX30102</h1>
+    <p class="sub">Vista compacta de pendientes, enviados y destinos activos.</p>
 
     <section class="grid">
       <article class="card"><p class="eyebrow">Estado</p><span class="badge">{status}</span></article>
@@ -432,8 +436,8 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
 
     <section class="stack">
       <article class="card">
-        <p class="eyebrow">Accion principal</p>
-        <p class="value" style="font-size:1.45rem;">{latest_item['to'] if latest_item else 'Sin pendientes'}</p>
+        <p class="eyebrow">Siguiente</p>
+        <p class="value" style="font-size:1.2rem;">{latest_item['to'] if latest_item else 'Sin pendientes'}</p>
         <p class="meta">{latest_item['source'] if latest_item else 'Esperando siguiente evento.'}</p>
         <div class="message">{latest_item['body'] if latest_item else 'No hay ningun mensaje pendiente por enviar.'}</div>
         <div class="actions">
@@ -446,20 +450,17 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       </article>
 
       <article class="card">
-        <p class="eyebrow">Mensajes pendientes</p>
-        <p class="meta">Debe aparecer un bloque por cada numero registrado que todavia falta enviar.</p>
+        <p class="eyebrow">Pendientes</p>
         <div class="queue">{pending_html}</div>
       </article>
 
       <article class="card">
-        <p class="eyebrow">Mensajes enviados</p>
-        <p class="meta">Aqui quedan visibles los ultimos mensajes que ya marcaste como enviados.</p>
+        <p class="eyebrow">Enviados</p>
         <div class="queue">{sent_html}</div>
       </article>
 
       <article class="card">
-        <p class="eyebrow">Comandos operativos</p>
-        <p class="meta">STATUS, ADD, DEL, CAMBIAR y RESET generan respuestas que tambien entran a la cola.</p>
+        <p class="eyebrow">Comandos</p>
         <form method="post" action="/console/command">
           <div class="form-grid">
             <label>
@@ -479,13 +480,13 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       </article>
 
       <article class="card">
-        <p class="eyebrow">Destinatarios activos</p>
+        <p class="eyebrow">Destinos</p>
         <ul>{contacts_html}</ul>
         <p class="tiny">Administrador actual: {admin_number or 'Sin numero configurado'} | Total: {len(active_recipients)} de {MAX_RECIPIENTS}</p>
       </article>
 
       <article class="card">
-        <p class="eyebrow">Ultimos datos del equipo</p>
+        <p class="eyebrow">Ultimos datos</p>
         <div class="message">Alerta: {message}\nRecibida: {received_at}\n\nArranque: {startup_message}\nRegistrado: {startup_time}</div>
       </article>
 
@@ -493,7 +494,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
 
       <article class="card">
         <p class="eyebrow">Resumen</p>
-        <div class="message">1. El ESP32 reporta encendido o alerta.\n2. El backend crea un mensaje por cada destinatario activo.\n3. Cada mensaje pendiente aparece por separado.\n4. Cuando lo envias manualmente, lo marcas como enviado.\n5. Si quieres empezar limpio, usas Vaciar cola.</div>
+        <div class="message">El backend crea un mensaje por destinatario. Lo envias manualmente y luego lo marcas como enviado.</div>
         <p class="meta">Eventos auditados: {audit_count}</p>
       </article>
     </section>
