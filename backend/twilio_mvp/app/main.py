@@ -24,6 +24,7 @@ from .config_store import (
 
 
 app = FastAPI(title="ESP32 Assisted SMS Backend")
+MAX_RECIPIENTS = 5
 
 
 class StartupPayload(BaseModel):
@@ -58,13 +59,7 @@ def twiml_message(body: str) -> str:
 
 
 def audit_event(kind: str, payload: dict[str, Any]) -> None:
-    append_audit_event(
-        {
-            "kind": kind,
-            "at": now_iso(),
-            **payload,
-        }
-    )
+    append_audit_event({"kind": kind, "at": now_iso(), **payload})
 
 
 def validate_device(device_id: str, token: str | None) -> dict[str, Any]:
@@ -78,7 +73,7 @@ def validate_device(device_id: str, token: str | None) -> dict[str, Any]:
 
 def format_status(config: dict[str, Any], state: dict[str, Any]) -> str:
     last_alert = state.get("last_alert")
-    contacts = recipients(config)
+    contact_count = len(recipients(config))
     if last_alert:
         summary = (
             f"Ultimo estado: {last_alert['status']} | BPM: {last_alert['bpm']} | "
@@ -86,19 +81,14 @@ def format_status(config: dict[str, Any], state: dict[str, Any]) -> str:
         )
     else:
         summary = "Sin alertas previas registradas"
-    return f"[ONLINE] Contactos: {len(contacts)} | {summary}"
+    return f"[ONLINE] Contactos: {contact_count} | {summary}"
 
 
 def build_sms_link(number: str, body: str) -> str:
     return f"sms:{normalize_phone(number)}?body={quote(body)}"
 
 
-def enqueue_messages(
-    state: dict[str, Any],
-    numbers: list[str],
-    body: str,
-    source: str,
-) -> dict[str, Any]:
+def enqueue_messages(state: dict[str, Any], numbers: list[str], body: str, source: str) -> dict[str, Any]:
     outbox = list(state.get("outbox", []))
     created_at = now_iso()
     for number in numbers:
@@ -115,7 +105,7 @@ def enqueue_messages(
                 "sent_at": None,
             }
         )
-    state["outbox"] = outbox[-30:]
+    state["outbox"] = outbox[-60:]
     return state
 
 
@@ -129,18 +119,59 @@ def mark_outbox_item(item_id: str) -> bool:
     return False
 
 
+def clear_outbox() -> None:
+    state = load_state()
+    state["outbox"] = []
+    save_state(state)
+
+
 def pending_outbox(state: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in reversed(state.get("outbox", [])) if not item.get("sent_at")]
+
+
+def sent_outbox(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [item for item in reversed(state.get("outbox", [])) if item.get("sent_at")]
+
+
+def render_queue_item(item: dict[str, Any], sent: bool) -> str:
+    chip = "Enviado" if sent else "Pendiente"
+    chip_class = "chip chip-sent" if sent else "chip"
+    date_label = "Enviado" if sent else "Creado"
+    date_value = item.get("sent_at") if sent else item.get("created_at")
+    actions = ""
+    if not sent:
+        actions = f"""
+          <div class="actions">
+            <a class="btn btn-primary" href="{build_sms_link(item['to'], item['body'])}">Abrir SMS</a>
+            <form method="post" action="/queue/{item['id']}/sent">
+              <button class="btn btn-secondary" type="submit">Marcar enviado</button>
+            </form>
+          </div>
+        """
+    return f"""
+      <article class="queue-item {'queue-item-sent' if sent else ''}">
+        <div class="queue-head">
+          <div>
+            <p class="queue-title">{item['source']}</p>
+            <p class="queue-meta">Para {item['to']} | {date_label}: {date_value}</p>
+          </div>
+          <span class="{chip_class}">{chip}</span>
+        </div>
+        <div class="message">{item['body']}</div>
+        {actions}
+      </article>
+    """
 
 
 def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_result: str = "") -> str:
     last_alert = state.get("last_alert")
     last_startup = state.get("last_startup")
     admin_number = normalize_phone(config.get("admin_phone", ""))
-    contacts = recipients(config)
-    audit_count = len(state.get("audit_log", []))
+    active_recipients = recipients(config)
     pending_items = pending_outbox(state)
+    sent_items = sent_outbox(state)
     latest_item = pending_items[0] if pending_items else None
+    audit_count = len(state.get("audit_log", []))
 
     if last_alert:
         status = last_alert.get("status", "SIN ALERTAS")
@@ -160,32 +191,17 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     startup_message = last_startup.get("message", "Sin arranque registrado") if last_startup else "Sin arranque registrado"
     startup_time = last_startup.get("received_at", "--") if last_startup else "--"
     badge_color = "#b91c1c" if status == "ALERTA" else "#166534"
-    contacts_html = "".join(f"<li>{contact}</li>" for contact in contacts) or "<li>Sin destinatarios configurados</li>"
-    queue_html = "".join(
-        f"""
-        <article class="queue-item">
-          <div class="queue-head">
-            <div>
-              <p class="queue-title">{item['source']}</p>
-              <p class="queue-meta">Para {item['to']} · {item['created_at']}</p>
-            </div>
-            <span class="chip">Pendiente</span>
-          </div>
-          <div class="message">{item['body']}</div>
-          <div class="actions">
-            <a class="btn btn-primary" href="{build_sms_link(item['to'], item['body'])}">Abrir SMS</a>
-            <form method="post" action="/queue/{item['id']}/sent">
-              <button class="btn btn-secondary" type="submit">Marcar enviado</button>
-            </form>
-          </div>
-        </article>
-        """
-        for item in pending_items
-    ) or '<div class="message">No hay mensajes pendientes. El backend sigue activo esperando el siguiente evento del equipo o de la consola.</div>'
+    contacts_html = "".join(f"<li>{contact}</li>" for contact in active_recipients) or "<li>Sin destinatarios configurados</li>"
+    pending_html = "".join(render_queue_item(item, sent=False) for item in pending_items) or (
+        '<div class="message">No hay mensajes pendientes.</div>'
+    )
+    sent_html = "".join(render_queue_item(item, sent=True) for item in sent_items[:10]) or (
+        '<div class="message">Todavia no hay mensajes marcados como enviados.</div>'
+    )
     console_block = (
         f"""
       <article class="card">
-        <p class="eyebrow">Resultado del comando</p>
+        <p class="eyebrow">Resultado</p>
         <div class="message">{console_result}</div>
       </article>
 """
@@ -231,19 +247,19 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     }}
     h1 {{
       margin: 0;
-      font-size: clamp(2.2rem, 4vw, 3.4rem);
+      font-size: clamp(2.2rem, 4vw, 3.2rem);
       line-height: 0.95;
       letter-spacing: -0.04em;
     }}
     .sub {{
       color: var(--muted);
-      max-width: 700px;
+      max-width: 760px;
       margin: 10px 0 26px;
       line-height: 1.5;
     }}
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 16px;
       margin-bottom: 16px;
     }}
@@ -267,7 +283,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
     }}
     .value {{
       margin: 0;
-      font-size: clamp(1.8rem, 4vw, 2.6rem);
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
       line-height: 1;
     }}
     .badge {{
@@ -297,7 +313,7 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 48px;
+      min-height: 46px;
       padding: 0 18px;
       border-radius: 14px;
       text-decoration: none;
@@ -363,6 +379,9 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       border-radius: 18px;
       padding: 16px;
     }}
+    .queue-item-sent {{
+      background: #f4f8f4;
+    }}
     .queue-head {{
       display: flex;
       align-items: start;
@@ -390,53 +409,57 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
       font-weight: 700;
       white-space: nowrap;
     }}
+    .chip-sent {{
+      color: #166534;
+      border-color: #bbf7d0;
+    }}
   </style>
 </head>
 <body>
   <main class="wrap">
     <p class="eyebrow">Panel de Comunicacion Asistida</p>
-    <h1>ESP32 + MAX30102<br>Cola de Mensajes</h1>
-    <p class="sub">Todo entra al mismo flujo: encendido, alerta y respuestas de comandos. El ESP32 reporta al backend por detras y aqui solo quedan los SMS listos para envio manual.</p>
+    <h1>ESP32 + MAX30102<br>Mensajes Claros</h1>
+    <p class="sub">Aqui se ve facil que mensajes faltan enviar, cuales ya fueron enviados y a que numeros se va a notificar. Todo queda en una sola cola simple.</p>
 
     <section class="grid">
-      <article class="card">
-        <p class="eyebrow">Estado de lectura</p>
-        <span class="badge">{status}</span>
-      </article>
-      <article class="card">
-        <p class="eyebrow">BPM</p>
-        <p class="value">{bpm}</p>
-      </article>
-      <article class="card">
-        <p class="eyebrow">SpO2</p>
-        <p class="value">{spo2}%</p>
-      </article>
-      <article class="card">
-        <p class="eyebrow">Bateria</p>
-        <p class="value">{battery}%</p>
-      </article>
+      <article class="card"><p class="eyebrow">Estado</p><span class="badge">{status}</span></article>
+      <article class="card"><p class="eyebrow">BPM</p><p class="value">{bpm}</p></article>
+      <article class="card"><p class="eyebrow">SpO2</p><p class="value">{spo2}%</p></article>
+      <article class="card"><p class="eyebrow">Bateria</p><p class="value">{battery}%</p></article>
+      <article class="card"><p class="eyebrow">Pendientes</p><p class="value">{len(pending_items)}</p></article>
+      <article class="card"><p class="eyebrow">Enviados</p><p class="value">{len(sent_items)}</p></article>
     </section>
 
     <section class="stack">
       <article class="card">
-        <p class="eyebrow">Siguiente SMS listo</p>
+        <p class="eyebrow">Accion principal</p>
         <p class="value" style="font-size:1.45rem;">{latest_item['to'] if latest_item else 'Sin pendientes'}</p>
-        <p class="meta">{latest_item['source'] if latest_item else 'Esperando siguiente evento del equipo o de la consola.'}</p>
-        <div class="message">{latest_item['body'] if latest_item else 'No hay ningun texto pendiente por enviar en este momento.'}</div>
+        <p class="meta">{latest_item['source'] if latest_item else 'Esperando siguiente evento.'}</p>
+        <div class="message">{latest_item['body'] if latest_item else 'No hay ningun mensaje pendiente por enviar.'}</div>
         <div class="actions">
-          <a class="{primary_sms_class}" href="{primary_sms_link}">Abrir SMS principal</a>
+          <a class="{primary_sms_class}" href="{primary_sms_link}">Abrir siguiente SMS</a>
+          <form method="post" action="/queue/clear">
+            <button class="btn btn-secondary" type="submit">Vaciar cola</button>
+          </form>
           <a class="btn btn-secondary" href="/debug/audit" target="_blank" rel="noreferrer">Ver auditoria</a>
         </div>
       </article>
 
       <article class="card">
-        <p class="eyebrow">Cola activa</p>
-        <div class="queue">{queue_html}</div>
+        <p class="eyebrow">Mensajes pendientes</p>
+        <p class="meta">Debe aparecer un bloque por cada numero registrado que todavia falta enviar.</p>
+        <div class="queue">{pending_html}</div>
+      </article>
+
+      <article class="card">
+        <p class="eyebrow">Mensajes enviados</p>
+        <p class="meta">Aqui quedan visibles los ultimos mensajes que ya marcaste como enviados.</p>
+        <div class="queue">{sent_html}</div>
       </article>
 
       <article class="card">
         <p class="eyebrow">Comandos operativos</p>
-        <p class="meta">STATUS, ADD, DEL, CAMBIAR y RESET generan una respuesta y esa respuesta tambien entra a la cola.</p>
+        <p class="meta">STATUS, ADD, DEL, CAMBIAR y RESET generan respuestas que tambien entran a la cola.</p>
         <form method="post" action="/console/command">
           <div class="form-grid">
             <label>
@@ -449,16 +472,16 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
             </label>
           </div>
           <div class="actions">
-            <button class="btn btn-primary" type="submit">Procesar y dejar en cola</button>
+            <button class="btn btn-primary" type="submit">Procesar comando</button>
           </div>
         </form>
-        <p class="tiny">Ejemplos: STATUS, ADD +51911111111, DEL +51911111111, CAMBIAR +51911111111 +51922222222, RESET 2468.</p>
+        <p class="tiny">Limite actual: {MAX_RECIPIENTS} destinatarios activos contando al administrador.</p>
       </article>
 
       <article class="card">
         <p class="eyebrow">Destinatarios activos</p>
         <ul>{contacts_html}</ul>
-        <p class="tiny">Administrador actual: {admin_number or 'Sin numero configurado'}.</p>
+        <p class="tiny">Administrador actual: {admin_number or 'Sin numero configurado'} | Total: {len(active_recipients)} de {MAX_RECIPIENTS}</p>
       </article>
 
       <article class="card">
@@ -469,9 +492,9 @@ def render_dashboard(config: dict[str, Any], state: dict[str, Any], console_resu
 {console_block}
 
       <article class="card">
-        <p class="eyebrow">Resumen operativo</p>
-        <div class="message">1. El ESP32 toma datos o reporta encendido.\n2. El backend guarda el evento y prepara un SMS pendiente.\n3. Los comandos web generan su propia respuesta y tambien quedan pendientes.\n4. La otra persona solo abre el SMS listo y lo envia manualmente.\n5. No hay despacho automatico por Twilio.</div>
-        <p class="meta">Eventos auditados actualmente: {audit_count}</p>
+        <p class="eyebrow">Resumen</p>
+        <div class="message">1. El ESP32 reporta encendido o alerta.\n2. El backend crea un mensaje por cada destinatario activo.\n3. Cada mensaje pendiente aparece por separado.\n4. Cuando lo envias manualmente, lo marcas como enviado.\n5. Si quieres empezar limpio, usas Vaciar cola.</div>
+        <p class="meta">Eventos auditados: {audit_count}</p>
       </article>
     </section>
   </main>
@@ -497,11 +520,7 @@ def process_incoming_command(number: str, raw_body: str) -> str:
 
     audit_event(
         "sms_inbound",
-        {
-            "from": normalize_phone(number),
-            "body": raw_body,
-            "normalized_body": body,
-        },
+        {"from": normalize_phone(number), "body": raw_body, "normalized_body": body},
     )
 
     if command == "":
@@ -526,6 +545,8 @@ def process_incoming_command(number: str, raw_body: str) -> str:
         new_number = normalize_phone(args[0])
         if new_number in recipients(config):
             return queue_command_reply(state, number, f"Numero ya registrado: {new_number}")
+        if len(recipients(config)) >= MAX_RECIPIENTS:
+            return queue_command_reply(state, number, f"Limite alcanzado. Solo se permiten {MAX_RECIPIENTS} destinatarios.")
         config["contacts"].append(new_number)
         save_config(config)
         return queue_command_reply(state, number, f"Numero agregado: {new_number}")
@@ -580,10 +601,7 @@ def dashboard() -> str:
 
 
 @app.post("/console/command", response_class=HTMLResponse)
-def console_command(
-    from_number: str = Form(...),
-    body: str = Form(...),
-) -> str:
+def console_command(from_number: str = Form(...), body: str = Form(...)) -> str:
     reply = process_incoming_command(from_number, body)
     console_result = (
         f"Origen: {normalize_phone(from_number)}\n"
@@ -600,11 +618,14 @@ def queue_mark_sent(item_id: str) -> str:
     return render_dashboard(load_config(), load_state(), console_result=result)
 
 
+@app.post("/queue/clear", response_class=HTMLResponse)
+def queue_clear() -> str:
+    clear_outbox()
+    return render_dashboard(load_config(), load_state(), console_result="Cola vaciada.")
+
+
 @app.post("/api/startup")
-def startup(
-    payload: StartupPayload,
-    x_device_token: str | None = Header(default=None),
-) -> dict[str, Any]:
+def startup(payload: StartupPayload, x_device_token: str | None = Header(default=None)) -> dict[str, Any]:
     config = validate_device(payload.device_id, x_device_token)
     state = load_state()
     state["last_startup"] = payload.model_dump() | {"received_at": now_iso()}
@@ -623,10 +644,7 @@ def startup(
 
 
 @app.post("/api/alert")
-def alert(
-    payload: AlertPayload,
-    x_device_token: str | None = Header(default=None),
-) -> dict[str, Any]:
+def alert(payload: AlertPayload, x_device_token: str | None = Header(default=None)) -> dict[str, Any]:
     config = validate_device(payload.device_id, x_device_token)
     state = load_state()
     state["last_alert"] = payload.model_dump() | {"received_at": now_iso()}
@@ -647,10 +665,7 @@ def alert(
 
 
 @app.post("/twilio/webhook", response_class=PlainTextResponse)
-def twilio_webhook(
-    From: str = Form(...),
-    Body: str = Form(...),
-) -> str:
+def twilio_webhook(From: str = Form(...), Body: str = Form(...)) -> str:
     return twiml_message(process_incoming_command(From, Body))
 
 
@@ -671,8 +686,4 @@ def debug_command(payload: DebugCommandPayload) -> dict[str, Any]:
 @app.get("/debug/audit")
 def debug_audit() -> dict[str, Any]:
     state = load_state()
-    return {
-        "ok": True,
-        "audit_log": state.get("audit_log", []),
-        "outbox": state.get("outbox", []),
-    }
+    return {"ok": True, "audit_log": state.get("audit_log", []), "outbox": state.get("outbox", [])}
