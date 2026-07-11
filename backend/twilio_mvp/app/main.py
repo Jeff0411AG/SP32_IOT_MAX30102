@@ -88,6 +88,12 @@ def build_sms_link(number: str, body: str) -> str:
     return f"sms:{normalize_phone(number)}?body={quote(body)}"
 
 
+def normalize_device_message(message: str) -> str:
+    normalized = message.replace("WiFi: ", "GSM: ")
+    normalized = normalized.replace("WIFI: ", "GSM: ")
+    return normalized
+
+
 def enqueue_messages(state: dict[str, Any], numbers: list[str], body: str, source: str) -> dict[str, Any]:
     outbox = list(state.get("outbox", []))
     created_at = now_iso()
@@ -623,14 +629,15 @@ def queue_clear() -> RedirectResponse:
 def startup(payload: StartupPayload, x_device_token: str | None = Header(default=None)) -> dict[str, Any]:
     config = validate_device(payload.device_id, x_device_token)
     state = load_state()
-    state["last_startup"] = payload.model_dump() | {"received_at": now_iso()}
-    enqueue_messages(state, recipients(config), payload.message, "Encendido")
+    startup_message = normalize_device_message(payload.message)
+    state["last_startup"] = payload.model_dump() | {"message": startup_message, "received_at": now_iso()}
+    enqueue_messages(state, recipients(config), startup_message, "Encendido")
     save_state(state)
     audit_event(
         "startup_received",
         {
             "device_id": payload.device_id,
-            "message": payload.message,
+            "message": startup_message,
             "battery": payload.battery,
             "wifi_rssi": payload.wifi_rssi,
         },
