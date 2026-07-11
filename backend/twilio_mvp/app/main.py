@@ -6,7 +6,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import FastAPI, Form, Header, HTTPException
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 from twilio.twiml.messaging_response import MessagingResponse
 
@@ -602,27 +602,21 @@ def dashboard() -> str:
 
 
 @app.post("/console/command", response_class=HTMLResponse)
-def console_command(from_number: str = Form(...), body: str = Form(...)) -> str:
-    reply = process_incoming_command(from_number, body)
-    console_result = (
-        f"Origen: {normalize_phone(from_number)}\n"
-        f"Comando: {body.strip().upper()}\n"
-        f"Respuesta preparada: {reply}"
-    )
-    return render_dashboard(load_config(), load_state(), console_result=console_result)
+def console_command(from_number: str = Form(...), body: str = Form(...)) -> RedirectResponse:
+    process_incoming_command(from_number, body)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/queue/{item_id}/sent", response_class=HTMLResponse)
-def queue_mark_sent(item_id: str) -> str:
-    marked = mark_outbox_item(item_id)
-    result = "Mensaje marcado como enviado." if marked else "No se encontro el mensaje pendiente."
-    return render_dashboard(load_config(), load_state(), console_result=result)
+def queue_mark_sent(item_id: str) -> RedirectResponse:
+    mark_outbox_item(item_id)
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/queue/clear", response_class=HTMLResponse)
-def queue_clear() -> str:
+def queue_clear() -> RedirectResponse:
     clear_outbox()
-    return render_dashboard(load_config(), load_state(), console_result="Cola vaciada.")
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/api/startup")
